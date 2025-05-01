@@ -125,7 +125,7 @@ void notify_new_nec_data(PIO pio, uint sm, irq_handler_t handler, bool enable)
     {
         // Find a free irq
         // typically it is PIO0_IRQ_0 which is irq 7
-        pio_irq = pio_get_irq_num(pio0, 0);
+        pio_irq = pio_get_irq_num(pio, 0);
         if (irq_get_exclusive_handler(pio_irq))
         {
             // if we can't use irq 7 then try 8
@@ -140,16 +140,16 @@ void notify_new_nec_data(PIO pio, uint sm, irq_handler_t handler, bool enable)
         irq_add_shared_handler(pio_irq, handler, PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
         irq_set_enabled(pio_irq, true);
         // index should be 0 or 1, there are only two irq's available for a given PIO
-        irq_index = pio_irq - pio_get_irq_num(pio0, 0);
+        irq_index = pio_irq - pio_get_irq_num(pio, 0);
         printf("irq_index = %u\n", irq_index);
-        pio_set_irqn_source_enabled(pio0, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), true);
+        pio_set_irqn_source_enabled(pio, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), true);
 
         printf("NEC interrupts ON\n");
     }
     else
     {   
         // Disable interrupt
-        pio_set_irqn_source_enabled(pio0, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), false);
+        pio_set_irqn_source_enabled(pio, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), false);
         irq_set_enabled(pio_irq, false);
         irq_remove_handler(pio_irq, handler);
 
