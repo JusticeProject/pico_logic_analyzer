@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -6,6 +7,11 @@
 
 // import the assembled PIO state machine program
 #include "nec_8.pio.h"
+
+//************************************************************************************************************
+
+static int8_t pio_irq = 0;
+static uint irq_index = 0;
 
 //************************************************************************************************************
 
@@ -109,4 +115,44 @@ bool nec_decode_frame(uint32_t frame, uint8_t* p_address, uint8_t* p_data) {
     *p_data = f.data;
 
     return true;
+}
+
+//************************************************************************************************************
+
+void notify_new_nec_data(PIO pio, uint sm, irq_handler_t handler, bool enable)
+{
+    if (enable)
+    {
+        // Find a free irq
+        // typically it is PIO0_IRQ_0 which is irq 7
+        pio_irq = pio_get_irq_num(pio0, 0);
+        if (irq_get_exclusive_handler(pio_irq))
+        {
+            // if we can't use irq 7 then try 8
+            pio_irq++;
+            if (irq_get_exclusive_handler(pio_irq))
+            {
+                panic("All IRQs are in use");
+            }
+        }
+        printf("pio_irq = %d\n", pio_irq);
+
+        irq_add_shared_handler(pio_irq, handler, PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+        irq_set_enabled(pio_irq, true);
+        // index should be 0 or 1, there are only two irq's available for a given PIO
+        irq_index = pio_irq - pio_get_irq_num(pio0, 0);
+        printf("irq_index = %u\n", irq_index);
+        pio_set_irqn_source_enabled(pio0, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), true);
+
+        printf("NEC interrupts ON\n");
+    }
+    else
+    {   
+        // Disable interrupt
+        pio_set_irqn_source_enabled(pio0, irq_index, pio_get_rx_fifo_not_empty_interrupt_source(sm), false);
+        irq_set_enabled(pio_irq, false);
+        irq_remove_handler(pio_irq, handler);
+
+        printf("NEC interrupts OFF\n");
+    }
 }
