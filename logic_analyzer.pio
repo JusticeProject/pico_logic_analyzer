@@ -1,0 +1,9 @@
+.program logic_analyzer
+
+
+PUBLIC program_start:
+    wait 0 pin 0                                ; wait for the line to go low
+
+.wrap_target
+    in pins, 1
+.wrap
