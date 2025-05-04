@@ -35,7 +35,8 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 add_executable (pico_logic_analyzer 
-		pico_logic_analyzer.c 
+		main.c
+		logic_analyzer.c
 		nec_8.c)
 
 # enable usb output, disable uart output
