@@ -149,6 +149,7 @@ int main() {
         int c = getchar_timeout_us(0);
         if ('m' == c)
         {
+            // TODO: remove this now that interrupts are working?
             // manual query for NEC data
             if (!pio_sm_is_rx_fifo_empty(pio0, nec_8_sm))
             {
