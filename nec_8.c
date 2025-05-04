@@ -84,10 +84,6 @@ int nec_8_init(PIO pio, uint pin_num)
 
 //************************************************************************************************************
 
-// Validate a 32-bit frame and store the address and data at the locations
-// provided.
-//
-// Returns: `true` if the frame was valid, otherwise `false`
 bool nec_decode_frame(uint32_t frame, uint8_t* p_address, uint8_t* p_data) {
 
     // access the frame data as four 8-bit fields

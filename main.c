@@ -13,7 +13,7 @@ int nec_8_sm;
 
 //************************************************************************************************************
 
-void nec_available_handler()
+void nec_available_interrupt_handler()
 {
     // display any frames received in the NEC FIFO
     if (pio_sm_is_rx_fifo_empty(pio0, nec_8_sm))
@@ -42,13 +42,10 @@ void nec_available_handler()
 int main() {
     stdio_init_all();
     
-    // configure and enable the state machines
-    int logic_analyzer_sm;
-    int logic_analyzer_offset;
-    logic_analyzer_init(pio0, &logic_analyzer_sm, &logic_analyzer_offset, CAPTURE_GPIO_PIN_BASE);
+    // configure and enable the debug state machine
     nec_8_sm = nec_8_init(pio0, CAPTURE_GPIO_PIN_BASE);
 
-    if (nec_8_sm == -1 || logic_analyzer_sm == -1 || logic_analyzer_offset == -1)
+    if (nec_8_sm == -1)
     {
         while (true)
         {
@@ -57,32 +54,18 @@ int main() {
         }
     }
 
-    bool nec_decoding_on = false;
+    bool nec_interrupts_on = false;
     
     while (true)
     {
         int c = getchar_timeout_us(0);
-        if ('m' == c)
-        {
-            // TODO: remove this now that interrupts are working?
-            // manual query for NEC data
-            if (!pio_sm_is_rx_fifo_empty(pio0, nec_8_sm))
-            {
-                uint32_t rx_frame = pio_sm_get(pio0, nec_8_sm);
-                printf("0x%x\n", rx_frame);
-            }
-            else
-            {
-                printf("No NEC data\n");
-            }
-        }
-        else if ('n' == c)
+        if ('n' == c)
         {
             // turn the interrupt on/off for automatic decoding of new NEC data
-            nec_decoding_on = !nec_decoding_on;
-            notify_new_nec_data(pio0, nec_8_sm, nec_available_handler, nec_decoding_on);
+            nec_interrupts_on = !nec_interrupts_on;
+            notify_new_nec_data(pio0, nec_8_sm, nec_available_interrupt_handler, nec_interrupts_on);
         }
-        else if ('q' == c)
+        /*else if ('q' == c)
         {
             if (pio_sm_is_rx_fifo_empty(pio0, logic_analyzer_sm))
             {
@@ -93,15 +76,26 @@ int main() {
                 uint32_t data = pio_sm_get(pio0, logic_analyzer_sm);
                 printf("0x%08x\n", data);
             }
-        }
-        else if ('r' == c)
-        {
-            logic_analyzer_restart(pio0, logic_analyzer_sm, logic_analyzer_offset);
-        }
+        }*/
         else if ('c' == c)
         {
-            printf("Starting capture\n");
-            // TODO: do DMA
+            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE))
+            {
+                #define CAPTURE_BUFFER_WORDS 8
+                uint32_t buffer[CAPTURE_BUFFER_WORDS];
+                logic_analyzer_start(buffer, CAPTURE_BUFFER_WORDS, CAPTURE_GPIO_PIN_BASE);
+                logic_analyzer_wait_for_complete();
+                logic_analyzer_cleanup();
+
+                for (int i = 0; i < CAPTURE_BUFFER_WORDS; i++)
+                {
+                    printf("0x%08x\n", buffer[i]);
+                }
+            }
+            else
+            {
+                printf("could not initialize the logic analyzer\n");
+            }
         }
 
         // TODO: set timescale with pio_sm_set_clkdiv

@@ -46,12 +46,12 @@ pico_enable_stdio_uart(pico_logic_analyzer 0)
 # invoke pio_asm to assemble the state machine programs
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
 pico_generate_pio_header(pico_logic_analyzer ${CMAKE_CURRENT_LIST_DIR}/nec_8.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
-pico_generate_pio_header(pico_logic_analyzer ${CMAKE_CURRENT_LIST_DIR}/logic_analyzer.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
 
 # link the executable using the IR transmit and receive libraries
 target_link_libraries(pico_logic_analyzer PRIVATE
   			pico_stdlib
-  			hardware_pio)
+  			hardware_pio
+			hardware_dma)
 
 pico_add_extra_outputs(pico_logic_analyzer)
 

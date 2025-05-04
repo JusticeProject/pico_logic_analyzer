@@ -1,91 +1,100 @@
 #include <stdio.h>
 #include "hardware/clocks.h"
+#include "hardware/pio.h"
+#include "hardware/dma.h"
 
 #include "logic_analyzer.h"
 
-// import the assembled PIO state machine program
-#include "logic_analyzer.pio.h"
+//************************************************************************************************************
+
+// variables only used in this file
+static PIO pio;
+static int sm = -1;
+static int offset = -1;
+static int dma_channel = -1;
+static pio_program_t program;
 
 //************************************************************************************************************
 
-void logic_analyzer_init(PIO pio, int* p_sm, int* p_offset, uint pin_num)
+bool logic_analyzer_init(uint pin_base)
 {
     // disable pull-up and pull-down on gpio pin
-    gpio_disable_pulls(pin_num);
+    // TODO: need to handle multiple pins
+    gpio_disable_pulls(pin_base);
+    
+    // TODO: need to handle multiple pins
+    uint16_t capture_prog_instr = pio_encode_in(pio_pins, 1);
+    program.instructions = &capture_prog_instr;
+    program.length = 1;
+    program.origin = -1;
 
-    // install the program in the PIO shared instruction space
-    if (pio_can_add_program(pio, &logic_analyzer_program))
+    // TODO: need to handle multiple pins
+    bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&program, &pio, &sm, &offset, pin_base, 1, true);
+    if (!success)
     {
-        *p_offset = pio_add_program(pio, &logic_analyzer_program);
-    }
-    else
-    {
-        *p_sm = -1;
-        return;      // the program could not be added
-    }
-
-    // claim an unused state machine on this PIO
-    *p_sm = pio_claim_unused_sm(pio, true);
-    if (*p_sm == -1)
-    {
-        return;      // we were unable to claim a state machine
+        printf("could not init PIO\n");
+        return false;
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////
-
-    // Set the GPIO function of the pin (connect the PIO to the pad)
-    pio_gpio_init(pio, pin_num);
-
-    // Set the pin direction to `input` at the PIO
-    pio_sm_set_consecutive_pindirs(pio, *p_sm, pin_num, 1, false);
-
-    // Create a new state machine configuration
-    pio_sm_config c = logic_analyzer_program_get_default_config(*p_offset);
-
-    // configure the Input Shift Register
-    sm_config_set_in_shift (&c,
-                            true,       // shift right
-                            true,       // enable autopush
-                            32);        // autopush after 32 bits
-
-    // join the FIFOs to make a single large receive FIFO
+    // Configure state machine to loop over this `in` instruction forever with autopush enabled.
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_in_pins(&c, pin_base);
+    // TODO: need to handle multiple pins
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 1, false);
+    pio_gpio_init(pio, pin_base);
+    sm_config_set_wrap(&c, offset, offset);
+    // TODO: need to handle clock divider
+    sm_config_set_clkdiv(&c, 1.0f);
+    // Note that we may push at a < 32 bit threshold if pin_count does not
+    // divide 32. We are using shift-to-right, so the sample data ends up
+    // left-justified in the FIFO in this case, with some zeroes at the LSBs.
+    // TODO: need to handle multiple pins
+    sm_config_set_in_shift(&c, true, true, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    pio_sm_init(pio, sm, offset, &c);
 
-    // Map the IN pin group to one pin, namely the `pin`
-    // parameter to this function.
-    sm_config_set_in_pins(&c, pin_num);
-
-    // Set the clock divider to 10 ticks per 562.5us burst period
-    //float div = clock_get_hz(clk_sys) / (10.0 / 562.5e-6);
-    float div = 1.0f;
-    sm_config_set_clkdiv(&c, div);
-
-    // Apply the configuration to the state machine
-    pio_sm_init(pio, *p_sm, *p_offset, &c);
-
-    // Set the state machine running
-    pio_sm_set_enabled(pio, *p_sm, true);
+    return true;
 }
 
 //************************************************************************************************************
 
-void logic_analyzer_restart(PIO pio, int sm, int offset)
+void logic_analyzer_start(uint32_t* buffer, int capture_size_words, uint trigger_pin)
 {
-    uint8_t pc = pio_sm_get_pc(pio, sm);
-    printf("Restarting PIO, current pc = %u\n", pc);
-    printf("Will use sm = %d offset = %d\n", sm, offset);
-
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_clear_fifos(pio, sm);
-
     pio_sm_restart(pio, sm);
 
-    // jump to the beginning of the program when we restart
-    pio_sm_exec(pio, sm, pio_encode_jmp(offset + logic_analyzer_offset_program_start));
+    dma_channel = dma_claim_unused_channel(true);
+    dma_channel_config c = dma_channel_get_default_config(dma_channel);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+    channel_config_set_read_increment(&c, false);
+    channel_config_set_write_increment(&c, true);
+    channel_config_set_dreq(&c, pio_get_dreq(pio, sm, false));
 
+    dma_channel_configure(dma_channel, &c,
+        buffer,        // Destination pointer
+        &pio->rxf[sm],      // Source pointer
+        capture_size_words, // Number of transfers
+        true                // Start immediately, but it won't actually transfer the data until the PIO pushes data into the Rx FIFO
+    );
+
+    // TODO: allow configurable rising/falling edge
+    pio_sm_exec(pio, sm, pio_encode_wait_gpio(false, trigger_pin));
     pio_sm_set_enabled(pio, sm, true);
-    printf("Done restarting the PIO\n");
+}
 
-    pc = pio_sm_get_pc(pio, sm);
-    printf("PIO pc = %u\n", pc);
+//************************************************************************************************************
+
+void logic_analyzer_wait_for_complete()
+{
+    dma_channel_wait_for_finish_blocking(dma_channel);
+    dma_channel_cleanup(dma_channel);
+    dma_channel_unclaim(dma_channel);
+}
+
+//************************************************************************************************************
+
+void logic_analyzer_cleanup()
+{
+    pio_remove_program_and_unclaim_sm(&program, pio, sm, offset);
 }
