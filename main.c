@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "pico/stdlib.h"
 
 #include "logic_analyzer.h"
@@ -10,6 +12,7 @@
 
 // global variables
 int nec_8_sm;
+uint32_t sample_period_us = 1;
 
 //************************************************************************************************************
 
@@ -35,6 +38,23 @@ void nec_available_interrupt_handler()
             printf("received: %08x\n", rx_frame);
         }
     }
+}
+
+//************************************************************************************************************
+
+uint32_t getIntFromUser()
+{
+    // user could enter 000000 - 999999, add one more char for the null termination
+    char buf[7];
+
+    memset(buf, 0, sizeof(buf));
+
+    // it stops reading when sizeof(buf)-1 chars are read
+    fgets(buf, sizeof(buf), stdin);
+
+    uint32_t number = atoi(buf);
+    
+    return number;
 }
 
 //************************************************************************************************************
@@ -79,9 +99,9 @@ int main() {
         }*/
         else if ('c' == c)
         {
-            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE))
+            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE, sample_period_us))
             {
-                #define CAPTURE_BUFFER_WORDS 8
+                #define CAPTURE_BUFFER_WORDS 512
                 uint32_t buffer[CAPTURE_BUFFER_WORDS];
                 logic_analyzer_start(buffer, CAPTURE_BUFFER_WORDS, CAPTURE_GPIO_PIN_BASE);
                 logic_analyzer_wait_for_complete();
@@ -97,7 +117,14 @@ int main() {
                 printf("could not initialize the logic analyzer\n");
             }
         }
-
-        // TODO: set timescale with pio_sm_set_clkdiv
+        else if ('t' == c)
+        {
+            sample_period_us = getIntFromUser();
+            if (sample_period_us == 0)
+            {
+                sample_period_us = 1;
+            }
+            printf("will capture data once every %u microseconds\n", sample_period_us);
+        }
     }
 }

@@ -16,7 +16,7 @@ static pio_program_t program;
 
 //************************************************************************************************************
 
-bool logic_analyzer_init(uint pin_base)
+bool logic_analyzer_init(uint pin_base, uint32_t sample_period_us)
 {
     // disable pull-up and pull-down on gpio pin
     // TODO: need to handle multiple pins
@@ -43,8 +43,9 @@ bool logic_analyzer_init(uint pin_base)
     pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 1, false);
     pio_gpio_init(pio, pin_base);
     sm_config_set_wrap(&c, offset, offset);
-    // TODO: need to handle clock divider
-    sm_config_set_clkdiv(&c, 1.0f);
+    float sample_period_sec = sample_period_us / 1000000.0;
+    float div = clock_get_hz(clk_sys) / (1.0 / sample_period_sec);
+    sm_config_set_clkdiv(&c, div);
     // Note that we may push at a < 32 bit threshold if pin_count does not
     // divide 32. We are using shift-to-right, so the sample data ends up
     // left-justified in the FIFO in this case, with some zeroes at the LSBs.
