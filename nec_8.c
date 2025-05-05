@@ -15,49 +15,11 @@ static uint irq_index = 0;
 
 //************************************************************************************************************
 
-static inline void nec_8_program_init (PIO pio, uint sm, uint offset, uint pin)
-{
-    // Set the pin direction to `input` at the PIO
-    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
-
-    // Create a new state machine configuration
-    pio_sm_config c = nec_8_program_get_default_config(offset);
-
-    // configure the Input Shift Register
-    sm_config_set_in_shift (&c,
-                            true,       // shift right
-                            true,       // enable autopush
-                            32);        // autopush after 32 bits
-
-    // join the FIFOs to make a single large receive FIFO
-    sm_config_set_fifo_join (&c, PIO_FIFO_JOIN_RX);
-
-    // Map the IN pin group to one pin, namely the `pin`
-    // parameter to this function.
-    sm_config_set_in_pins (&c, pin);
-
-    // Map the JMP pin to the `pin` parameter of this function.
-    sm_config_set_jmp_pin (&c, pin);
-
-    // Set the clock divider to 10 ticks per 562.5us burst period
-    float div = clock_get_hz (clk_sys) / (10.0 / 562.5e-6);
-    sm_config_set_clkdiv (&c, div);
-
-    // Apply the configuration to the state machine
-    pio_sm_init (pio, sm, offset, &c);
-
-    // Set the state machine running
-    pio_sm_set_enabled (pio, sm, true);
-}
-
-//************************************************************************************************************
-
-// Claim an unused state machine on the specified PIO and configure it
-// to receive NEC IR frames on the given GPIO pin.
-//
-// Returns: the state machine number on success, otherwise -1
 int nec_8_init(PIO pio, uint pin_num)
 {
+    // disable pull-up and pull-down on gpio pin
+    gpio_disable_pulls(pin_num);
+
     // install the program in the PIO shared instruction space
     uint offset;
     if (pio_can_add_program(pio, &nec_8_program))
@@ -76,8 +38,37 @@ int nec_8_init(PIO pio, uint pin_num)
         return -1;      // we were unable to claim a state machine
     }
 
-    // configure and enable the state machine
-    nec_8_program_init(pio, sm, offset, pin_num);
+    // Set the pin direction to `input` at the PIO
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_num, 1, false);
+
+    // Create a new state machine configuration
+    pio_sm_config c = nec_8_program_get_default_config(offset);
+
+    // configure the Input Shift Register
+    sm_config_set_in_shift (&c,
+                            true,       // shift right
+                            true,       // enable autopush
+                            32);        // autopush after 32 bits
+
+    // join the FIFOs to make a single large receive FIFO
+    sm_config_set_fifo_join (&c, PIO_FIFO_JOIN_RX);
+
+    // Map the IN pin group to one pin, namely the `pin`
+    // parameter to this function.
+    sm_config_set_in_pins (&c, pin_num);
+
+    // Map the JMP pin to the `pin` parameter of this function.
+    sm_config_set_jmp_pin (&c, pin_num);
+
+    // Set the clock divider to 10 ticks per 562.5us burst period
+    float div = clock_get_hz (clk_sys) / (10.0 / 562.5e-6);
+    sm_config_set_clkdiv (&c, div);
+
+    // Apply the configuration to the state machine
+    pio_sm_init (pio, sm, offset, &c);
+
+    // Set the state machine running
+    pio_sm_set_enabled (pio, sm, true);
 
     return sm;
 }

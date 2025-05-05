@@ -12,7 +12,7 @@
 
 // global variables
 int nec_8_sm;
-uint32_t sample_period_us = 1;
+float clk_div = 1.0f;
 
 //************************************************************************************************************
 
@@ -79,27 +79,28 @@ int main() {
     while (true)
     {
         int c = getchar_timeout_us(0);
-        if ('n' == c)
+        if ('i' == c)
         {
             // turn the interrupt on/off for automatic decoding of new NEC data
             nec_interrupts_on = !nec_interrupts_on;
             notify_new_nec_data(pio0, nec_8_sm, nec_available_interrupt_handler, nec_interrupts_on);
         }
-        /*else if ('q' == c)
+        else if ('q' == c)
         {
-            if (pio_sm_is_rx_fifo_empty(pio0, logic_analyzer_sm))
+            printf("checking NEC data running on sm %d\n", nec_8_sm);
+            if (pio_sm_is_rx_fifo_empty(pio0, nec_8_sm))
             {
-                printf("No data in logic analyzer FIFO\n");
+                printf("no NEC data available\n");
             }
             else
             {
-                uint32_t data = pio_sm_get(pio0, logic_analyzer_sm);
-                printf("0x%08x\n", data);
+                uint32_t rx_frame = pio_sm_get(pio0, nec_8_sm);
+                printf("received: %08x\n", rx_frame);
             }
-        }*/
+        }
         else if ('c' == c)
         {
-            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE, sample_period_us))
+            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE, clk_div))
             {
                 #define CAPTURE_BUFFER_WORDS 512
                 uint32_t buffer[CAPTURE_BUFFER_WORDS];
@@ -117,14 +118,19 @@ int main() {
                 printf("could not initialize the logic analyzer\n");
             }
         }
-        else if ('t' == c)
+        else if ('u' == c)
         {
-            sample_period_us = getIntFromUser();
-            if (sample_period_us == 0)
-            {
-                sample_period_us = 1;
-            }
-            printf("will capture data once every %u microseconds\n", sample_period_us);
+            uint32_t us_per_sample = getIntFromUser();
+            printf("will capture data once every %u microseconds\n", us_per_sample);
+            clk_div = calc_clk_div_from_us(us_per_sample);
+            printf("will use clk_div of %f\n", clk_div);
+        }
+        else if ('n' == c)
+        {
+            uint32_t ns_per_sample = getIntFromUser();
+            printf("will capture data once every %u nanoseconds\n", ns_per_sample);
+            clk_div = calc_clk_div_from_ns(ns_per_sample);
+            printf("will use clk_div of %f\n", clk_div);
         }
     }
 }
