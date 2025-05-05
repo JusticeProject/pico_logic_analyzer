@@ -27,15 +27,15 @@ void nec_available_interrupt_handler()
     {
         uint32_t rx_frame = pio_sm_get(pio0, nec_8_sm);
 
-        uint8_t address, nec_8_data;
-        if (nec_decode_frame(rx_frame, &address, &nec_8_data))
+        uint8_t address, data, repeat;
+        if (nec_decode_frame(rx_frame, &address, &data, &repeat))
         {
             // normally shouldn't do printf inside an interrupt handler...but it's not critical in this case, it's only for debug
-            printf("received address= %02x, data = %02x\n", address, nec_8_data);
+            printf("received address= 0x%02x, data = 0x%02x, repeat = 0x%02x\n", address, data, repeat);
         }
         else
         {
-            printf("received: %08x\n", rx_frame);
+            printf("received: 0x%08x\n", rx_frame);
         }
     }
 }

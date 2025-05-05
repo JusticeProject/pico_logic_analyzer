@@ -1,38 +1,56 @@
 .program nec_8
 
-; Decode IR frames in NEC format and push 32-bit words to the input FIFO.
-;
-; The input pin should be connected to an IR detector with an 'active low' output.
-;
+; Decode IR frames in NEC format, LSB first, and autopush 32-bit words to the Rx FIFO.
+; Input Shift Register should be configured to shift right.
+
+; The input pin should be connected to an IR detector with an 'active low' output. Typically
+; the pull-up resistor is built into the IR detector.
+
 ; This program expects there to be 10 state machine clock ticks per 'normal' 562.5us burst period
-; in order to permit timely detection of start of a burst. The initialisation function below sets
-; the correct divisor to achieve this relative to the system clock.
-;
-; Within the 'NEC' protocol frames consists of 32 bits sent least-siginificant bit first; so the
-; Input Shift Register should be configured to shift right and autopush after 32 bits, as in the
-; initialisation function below.
-;
-.define BURST_LOOP_COUNTER 30                   ; the detection threshold for a 'frame sync' burst
-.define BIT_SAMPLE_DELAY 15                     ; how long to wait after the end of the burst before sampling
+; in order to permit timely detection of start of a burst. This means:
+; One instruction is 56.25us
+; Detection threshold for burst is ~3.5ms
+; Sync burst is normally 9 ms
+; Gap after sync burst is 4.4 ms for new cmd but 2.1 ms for repeat cmd
+
+
+.define BURST_LOOP_COUNTER 30                   ; gives a detection threshold of ~3.5ms for a frame sync burst
+.define GAP_LOOP_COUNTER 26                     ; gives a detection threshold of ~3 ms for the gap after a frame sync burst
+.define BIT_SAMPLE_DELAY 15                     ; how long to wait after the end of a short burst before sampling
 
 .wrap_target
 
-next_burst:
-    set X, BURST_LOOP_COUNTER
+beginning:
+    set x, BURST_LOOP_COUNTER
     wait 0 pin 0                                ; wait for the next burst to start
 
 burst_loop:
-    jmp pin data_bit                            ; the burst ended before the counter expired
-    jmp X-- burst_loop                          ; wait for the burst to end
+    jmp pin data_bit                            ; check if the burst ended before the counter expired
+    jmp x-- burst_loop                          ; wait for the burst to end
 
                                                 ; the counter expired - this is a sync burst
-    mov ISR, NULL                               ; reset the Input Shift Register
+    mov isr, null                               ; reset the Input Shift Register
     wait 1 pin 0                                ; wait for the sync burst to finish
-    jmp next_burst                              ; wait for the first data bit
+
+
+    set y, GAP_LOOP_COUNTER                     ; the sync burst is done, it's now a gap, check for short/long gap
+wait_for_end_of_gap:
+    jmp pin gap_not_done
+    jmp short_gap_complete                      ; pin has gone low, so at this point the gap is done and it's before the counter expired
+gap_not_done:                                   ; the pin is still high, it's still the gap, keep waiting
+    jmp y-- wait_for_end_of_gap                 ; if we timeout waiting for the gap to finish, it's a long gap
+
+long_gap_complete:
+    jmp beginning                               ; it was a long gap, go back to beginning to wait for burst then data bits
+short_gap_complete:
+    mov isr, x                                  ; x will have decremented 1 below 0 by this point, so it wrapped around to 0xFFFFFFFF
+    push                                        ; push this recognizable value to the FIFO so the system can read it
+    jmp beginning
+
 
 data_bit:
     nop [ BIT_SAMPLE_DELAY - 1 ]                ; wait for 1.5 burst periods before sampling the bit value
-    in PINS, 1                                  ; if the next burst has started then detect a '0' (short gap)
+    in pins, 1                                  ; if the next burst has started then detect a '0' (short gap)
                                                 ; otherwise detect a '1' (long gap)
-                                                ; after 32 bits the ISR will autopush to the receive FIFO
+                                                ; after 32 bits the isr will autopush to the Rx FIFO
 .wrap

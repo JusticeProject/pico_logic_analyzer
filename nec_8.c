@@ -75,12 +75,23 @@ int nec_8_init(PIO pio, uint pin_num)
 
 //************************************************************************************************************
 
-bool nec_decode_frame(uint32_t frame, uint8_t* p_address, uint8_t* p_data) {
+bool nec_decode_frame(uint32_t frame, uint8_t* p_address, uint8_t* p_data, uint8_t* p_repeat)
+{
+    *p_address = 0;
+    *p_data = 0;
+    *p_repeat = 0;
+
+    if (frame == 0xFFFFFFFF)
+    {
+        *p_repeat = 0xFF;
+        return true;
+    }
 
     // access the frame data as four 8-bit fields
     union {
         uint32_t raw;
-        struct {
+        struct
+        {
             uint8_t address;
             uint8_t inverted_address;
             uint8_t data;
