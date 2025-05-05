@@ -34,7 +34,7 @@ float calc_clk_div_from_ns(uint32_t ns_per_sample)
 {
     if (ns_per_sample < 8)
     {
-        ns_per_sample = 8;
+        ns_per_sample = 8; // 8 ns/sample -> 125MHz
     }
 
     float sec_per_sample = ns_per_sample / 1000000000.0;

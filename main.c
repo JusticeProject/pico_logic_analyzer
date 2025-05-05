@@ -110,8 +110,14 @@ int main() {
 
                 for (int i = 0; i < CAPTURE_BUFFER_WORDS; i++)
                 {
-                    printf("0x%08x\n", buffer[i]);
+                    for (int j = 0; j < 32; j++)
+                    {
+                        bool bit = buffer[i] & (0x1 << j);
+                        printf("%c", bit ? '1' : '0');
+                    }
+                    sleep_us(500);
                 }
+                printf("\n");
             }
             else
             {
