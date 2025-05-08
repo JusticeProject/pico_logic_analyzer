@@ -85,7 +85,7 @@ bool logic_analyzer_init(uint pin_base, float div)
 
 //************************************************************************************************************
 
-void logic_analyzer_start(uint32_t* buffer, int capture_size_words, uint trigger_pin)
+void logic_analyzer_start(uint32_t* buffer, int capture_size_words, uint trigger_pin, bool trigger_logic_high)
 {
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_clear_fifos(pio, sm);
@@ -105,8 +105,7 @@ void logic_analyzer_start(uint32_t* buffer, int capture_size_words, uint trigger
         true                // Start immediately, but it won't actually transfer the data until the PIO pushes data into the Rx FIFO
     );
 
-    // TODO: allow configurable rising/falling edge
-    pio_sm_exec(pio, sm, pio_encode_wait_gpio(false, trigger_pin));
+    pio_sm_exec(pio, sm, pio_encode_wait_gpio(trigger_logic_high, trigger_pin));
     pio_sm_set_enabled(pio, sm, true);
 }
 

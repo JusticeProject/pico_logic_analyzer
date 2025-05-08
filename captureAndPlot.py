@@ -22,9 +22,6 @@ def plotData(filename, secsPerSample):
     dataListInt = [int(s) for s in dataListStr]
     timeList = [i*secsPerSample for i in range(0, len(dataListInt))]
 
-    #print(f"length of adcIntList = {len(adcIntList)} first = {adcIntList[0]} last = {adcIntList[len(adcIntList)-1]}")
-    #print(f"length of timeList = {len(timeList)}")
-
     y = np.array(dataListInt)
     x = np.array(timeList)
 
@@ -36,14 +33,30 @@ def plotData(filename, secsPerSample):
 
 ###################################################################################################
 
+def printReplyFromPico(ser, numLines):
+    print("reply from pico...")
+    for i in range(0, numLines):
+        print(ser.readline().decode(encoding="utf-8").rstrip("\r\n"))
+    print("...end of reply")
+
+###################################################################################################
+
 def configureSampleRate_us(ser, microseconds):
     print(f"configuring sample rate with {microseconds} microseconds")
     ser.write(b"u")
-    print("reply from pico...")
     ser.write(microseconds.encode(encoding="utf-8"))
-    print(ser.readline().decode(encoding="utf-8").rstrip("\r\n"))
-    print(ser.readline().decode(encoding="utf-8").rstrip("\r\n"))
-    print("...end of reply")
+    printReplyFromPico(ser, 2)
+
+###################################################################################################
+
+def configureEdge(ser, triggerLogicHigh):
+    if triggerLogicHigh:
+        print("Configuring capture on logic 1")
+        ser.write(b"o")
+    else:
+        print("Configuring capture on logic 0")
+        ser.write(b"z")
+    printReplyFromPico(ser, 1)
 
 ###################################################################################################
 
@@ -67,13 +80,18 @@ def doCapture(ser):
 
 ser = serial.Serial("/dev/ttyACM0", 115200)
 
+# TODO: check args for us/ns
 usPerSample = "56"
 print(f"entered {usPerSample} microseconds")
 for i in range(0, 6-len(usPerSample)):
     usPerSample = "0" + usPerSample
 print(f"will use {usPerSample} when sending to pico")
 
+# TODO: check args for logic 1/0
+triggerLogicHigh = False
+
 configureSampleRate_us(ser, "000056")
+configureEdge(ser, triggerLogicHigh)
 doCapture(ser)
 
 secsPerSample = int(usPerSample) / 1000000.0

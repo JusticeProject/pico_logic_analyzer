@@ -75,11 +75,24 @@ int main() {
     }
 
     bool nec_interrupts_on = false;
+    bool trigger_logic_high = false;
     
     while (true)
     {
         int c = getchar_timeout_us(0);
-        if ('i' == c)
+        if ('h' == c)
+        {
+            // TODO: update when new commands are added
+            printf("\n");
+            printf("i = toggle interrupt notification of new NEC data\n");
+            printf("q = query for new NEC data\n");
+            printf("c = start capture\n");
+            printf("u = set sample period in us, ex: u000056\n");
+            printf("n = set sample period in ns, ex: n000008\n");
+            printf("o = start capture when logic 1 is detected\n");
+            printf("z = start capture when logic 0 is detected\n");
+        }
+        else if ('i' == c)
         {
             // turn the interrupt on/off for automatic decoding of new NEC data
             nec_interrupts_on = !nec_interrupts_on;
@@ -104,10 +117,11 @@ int main() {
             {
                 #define CAPTURE_BUFFER_WORDS 512
                 uint32_t buffer[CAPTURE_BUFFER_WORDS];
-                logic_analyzer_start(buffer, CAPTURE_BUFFER_WORDS, CAPTURE_GPIO_PIN_BASE);
+                logic_analyzer_start(buffer, CAPTURE_BUFFER_WORDS, CAPTURE_GPIO_PIN_BASE, trigger_logic_high);
                 logic_analyzer_wait_for_complete();
                 logic_analyzer_cleanup();
 
+                // TODO: need to handle multiple channels
                 for (int i = 0; i < CAPTURE_BUFFER_WORDS; i++)
                 {
                     for (int j = 0; j < 32; j++)
@@ -115,7 +129,7 @@ int main() {
                         bool bit = buffer[i] & (0x1 << j);
                         printf("%c", bit ? '1' : '0');
                     }
-                    sleep_us(500);
+                    sleep_us(100);
                 }
                 printf("\n");
             }
@@ -137,6 +151,18 @@ int main() {
             printf("will capture data once every %u nanoseconds\n", ns_per_sample);
             clk_div = calc_clk_div_from_ns(ns_per_sample);
             printf("will use clk_div of %f\n", clk_div);
+        }
+        else if ('o' == c)
+        {
+            // we want trigger on logic 1
+            trigger_logic_high = true;
+            printf("will start capture on logic 1\n");
+        }
+        else if ('z' == c)
+        {
+            // we want trigger on logic 0
+            trigger_logic_high = false;
+            printf("will start capture on logic 0\n");
         }
     }
 }
