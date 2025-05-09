@@ -42,7 +42,7 @@ void nec_available_interrupt_handler()
 
 //************************************************************************************************************
 
-uint32_t getIntFromUser()
+uint32_t getLongIntFromUser()
 {
     // user could enter 000000 - 999999, add one more char for the null termination
     char buf[7];
@@ -53,6 +53,23 @@ uint32_t getIntFromUser()
     fgets(buf, sizeof(buf), stdin);
 
     uint32_t number = atoi(buf);
+    
+    return number;
+}
+
+//************************************************************************************************************
+
+uint16_t getShortIntFromUser()
+{
+    // user could enter 00 - 99, add one more char for the null termination
+    char buf[3];
+
+    memset(buf, 0, sizeof(buf));
+
+    // it stops reading when sizeof(buf)-1 chars are read
+    fgets(buf, sizeof(buf), stdin);
+
+    uint16_t number = atoi(buf);
     
     return number;
 }
@@ -76,6 +93,7 @@ int main() {
 
     bool nec_interrupts_on = false;
     bool trigger_logic_high = false;
+    uint16_t num_pins = 1;
     
     while (true)
     {
@@ -84,13 +102,14 @@ int main() {
         {
             // TODO: update when new commands are added
             printf("\n");
-            printf("i = toggle interrupt notification of new NEC data\n");
+            printf("i = toggle interrupt notification of new NEC data (default is off)\n");
             printf("q = query for new NEC data\n");
             printf("c = start capture\n");
             printf("u = set sample period in us, ex: u000056\n");
-            printf("n = set sample period in ns, ex: n000008\n");
+            printf("n = set sample period in ns, ex: n000100 (default is 8ns)\n");
+            printf("p = set number of pins to capture (default is 1)\n");
             printf("o = start capture when logic 1 is detected\n");
-            printf("z = start capture when logic 0 is detected\n");
+            printf("z = start capture when logic 0 is detected (default)\n");
         }
         else if ('i' == c)
         {
@@ -113,25 +132,39 @@ int main() {
         }
         else if ('c' == c)
         {
-            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE, clk_div))
+            if (logic_analyzer_init(CAPTURE_GPIO_PIN_BASE, num_pins, clk_div))
             {
+                // TODO: if RASPBERRYPI_PICO_W or  RASPBERRYPI_PICO defined then smaller buffer
+                //  else if RASPBERRYPI_PICO2_W or RASPBERRYPI_PICO2 defined then larger buffer
+                // else unsupported platform
+                // TODO: need to allow user configurable number of 32-bit words for capture, check that it's not larger than MAX_BUFFER_WORDS
                 #define CAPTURE_BUFFER_WORDS 512
+                
+
                 uint32_t buffer[CAPTURE_BUFFER_WORDS];
                 logic_analyzer_start(buffer, CAPTURE_BUFFER_WORDS, CAPTURE_GPIO_PIN_BASE, trigger_logic_high);
                 logic_analyzer_wait_for_complete();
                 logic_analyzer_cleanup();
 
-                // TODO: need to handle multiple channels
-                for (int i = 0; i < CAPTURE_BUFFER_WORDS; i++)
+                int chars_sent = 0;
+                for (int pin = 0; pin < num_pins; pin++)
                 {
-                    for (int j = 0; j < 32; j++)
+                    for (int word = 0; word < CAPTURE_BUFFER_WORDS; word++)
                     {
-                        bool bit = buffer[i] & (0x1 << j);
-                        printf("%c", bit ? '1' : '0');
+                        for (int bit_location = pin; bit_location < 32; bit_location += num_pins)
+                        {
+                            bool data = buffer[word] & (0x1 << bit_location);
+                            printf("%c", data ? '1' : '0');
+                            chars_sent++;
+                            if (chars_sent % 32 == 0)
+                            {
+                                sleep_us(100);
+                            }
+                        }
+                        
                     }
-                    sleep_us(100);
+                    printf("\n");
                 }
-                printf("\n");
             }
             else
             {
@@ -140,17 +173,32 @@ int main() {
         }
         else if ('u' == c)
         {
-            uint32_t us_per_sample = getIntFromUser();
+            uint32_t us_per_sample = getLongIntFromUser();
             printf("will capture data once every %u microseconds\n", us_per_sample);
             clk_div = calc_clk_div_from_us(us_per_sample);
             printf("will use clk_div of %f\n", clk_div);
         }
         else if ('n' == c)
         {
-            uint32_t ns_per_sample = getIntFromUser();
+            uint32_t ns_per_sample = getLongIntFromUser();
             printf("will capture data once every %u nanoseconds\n", ns_per_sample);
             clk_div = calc_clk_div_from_ns(ns_per_sample);
             printf("will use clk_div of %f\n", clk_div);
+        }
+        else if ('p' == c)
+        {
+            num_pins = getShortIntFromUser();
+            // We are enforcing a power of 2 for the number of pins. Could maybe use the log2 function 
+            // but I don't want to deal with floating point rounding error.
+            if ((1 == num_pins) || (2 == num_pins) || (4 == num_pins) || (8 == num_pins) || (16 == num_pins) || (32 == num_pins))
+            {
+                printf("will capture data on %u pins\n", num_pins);
+            }
+            else
+            {
+                printf("number of pins must be a power of 2 (1, 2, 4, 8, 16, 32), reverting to default of 1\n");
+                num_pins = 1;
+            }
         }
         else if ('o' == c)
         {

@@ -44,20 +44,20 @@ float calc_clk_div_from_ns(uint32_t ns_per_sample)
 
 //************************************************************************************************************
 
-bool logic_analyzer_init(uint pin_base, float div)
+bool logic_analyzer_init(uint pin_base, uint16_t num_pins, float clk_div)
 {
-    // disable pull-up and pull-down on gpio pin
-    // TODO: need to handle multiple pins
-    gpio_disable_pulls(pin_base);
+    // disable pull-up and pull-down on all gpio pins
+    for (int i = 0; i < num_pins; i++)
+    {
+        gpio_disable_pulls(pin_base + i);
+    }
     
-    // TODO: need to handle multiple pins
-    uint16_t capture_prog_instr = pio_encode_in(pio_pins, 1);
+    uint16_t capture_prog_instr = pio_encode_in(pio_pins, num_pins);
     program.instructions = &capture_prog_instr;
     program.length = 1;
     program.origin = -1;
 
-    // TODO: need to handle multiple pins
-    bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&program, &pio, &sm, &offset, pin_base, 1, true);
+    bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&program, &pio, &sm, &offset, pin_base, num_pins, true);
     if (!success)
     {
         printf("could not init PIO\n");
@@ -67,15 +67,13 @@ bool logic_analyzer_init(uint pin_base, float div)
     // Configure state machine to loop over this `in` instruction forever with autopush enabled.
     pio_sm_config c = pio_get_default_sm_config();
     sm_config_set_in_pins(&c, pin_base);
-    // TODO: need to handle multiple pins
-    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 1, false);
-    pio_gpio_init(pio, pin_base);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, num_pins, false);
+    //pio_gpio_init(pio, pin_base); // Only needed for output on the pins, we are doing input
     sm_config_set_wrap(&c, offset, offset);
-    sm_config_set_clkdiv(&c, div);
-    // Note that we may push at a < 32 bit threshold if pin_count does not
-    // divide 32. We are using shift-to-right, so the sample data ends up
-    // left-justified in the FIFO in this case, with some zeroes at the LSBs.
-    // TODO: need to handle multiple pins
+    sm_config_set_clkdiv(&c, clk_div);
+    // We are using shift-to-right, so the older sample data ends up
+    // at the LSB, there are no gaps in the data because we are 
+    // enforcing a power of 2 for the number of pins.
     sm_config_set_in_shift(&c, true, true, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
     pio_sm_init(pio, sm, offset, &c);

@@ -14,35 +14,32 @@ import matplotlib.pyplot as plt
 
 ###################################################################################################
 
-def plotData(filename, secsPerSample):
+def plotData(filename, secsPerSample, numPins):
     fd = open(filename, "r")
-    dataListStr = fd.read()
+
+    for i in range(0, numPins):
+        dataListStr = fd.readline()
+        dataListStr = dataListStr.replace("\n", "")
+        dataListInt = [int(s) for s in dataListStr]
+        timeList = [i*secsPerSample for i in range(0, len(dataListInt))]
+        y = np.array(dataListInt)
+        x = np.array(timeList)
+        plt.plot(x, y)
+
     fd.close()
-
-    dataListInt = [int(s) for s in dataListStr]
-    timeList = [i*secsPerSample for i in range(0, len(dataListInt))]
-
-    y = np.array(dataListInt)
-    x = np.array(timeList)
-
-    plt.plot(x, y)
     plt.xlabel("Time [s]")
     plt.ylabel("Value")
-    #plt.axis([0, x[-1], 0, 1])
     plt.show()
 
 ###################################################################################################
 
 def printReplyFromPico(ser, numLines):
-    print("reply from pico...")
     for i in range(0, numLines):
         print(ser.readline().decode(encoding="utf-8").rstrip("\r\n"))
-    print("...end of reply")
 
 ###################################################################################################
 
 def configureSampleRate_us(ser, microseconds):
-    print(f"configuring sample rate with {microseconds} microseconds")
     ser.write(b"u")
     ser.write(microseconds.encode(encoding="utf-8"))
     printReplyFromPico(ser, 2)
@@ -51,27 +48,34 @@ def configureSampleRate_us(ser, microseconds):
 
 def configureEdge(ser, triggerLogicHigh):
     if triggerLogicHigh:
-        print("Configuring capture on logic 1")
         ser.write(b"o")
     else:
-        print("Configuring capture on logic 0")
         ser.write(b"z")
     printReplyFromPico(ser, 1)
 
 ###################################################################################################
 
-def doCapture(ser):
+def configureNumPins(ser, numPinsStr):
+    ser.write(b"p")
+    ser.write(numPinsStr.encode(encoding="utf-8"))
+    printReplyFromPico(ser, 1)
+
+###################################################################################################
+
+def doCapture(ser, numPins):
     ser.write(b"c")
-    data = ser.readline()
-    print(f"read {len(data)} bytes")
-    data_str = data.decode(encoding="utf-8") # convert from bytes to string
-    data_str = data_str.rstrip("\r\n")
-    print(f"have {len(data_str)} samples of data")
-    
     fd = open("data1.txt", "w")
-    n = fd.write(data_str)
+
+    for i in range(0, numPins):
+        data = ser.readline()
+        print(f"read {len(data)} bytes")
+        data_str = data.decode(encoding="utf-8") # convert from bytes to string
+        data_str = data_str.rstrip("\r\n")
+        print(f"have {len(data_str)} samples of data")
+        n = fd.write(data_str + "\n")
+        print(f"wrote {n} bytes of data to data1.txt")
+
     fd.close()
-    print(f"wrote {n} bytes of data to data1.txt")
 
 ###################################################################################################
 
@@ -82,17 +86,22 @@ ser = serial.Serial("/dev/ttyACM0", 115200)
 
 # TODO: check args for us/ns
 usPerSample = "56"
-print(f"entered {usPerSample} microseconds")
 for i in range(0, 6-len(usPerSample)):
     usPerSample = "0" + usPerSample
-print(f"will use {usPerSample} when sending to pico")
 
 # TODO: check args for logic 1/0
 triggerLogicHigh = False
 
+# TODO: check args for number of pins, add 0 if needed to make it two digits, verify it's a power of 2
+numPins = 2
+numPinsStr = str(numPins)
+if len(numPinsStr) == 1:
+    numPinsStr = "0" + numPinsStr
+
 configureSampleRate_us(ser, "000056")
+configureNumPins(ser, numPinsStr)
 configureEdge(ser, triggerLogicHigh)
-doCapture(ser)
+doCapture(ser, numPins)
 
 secsPerSample = int(usPerSample) / 1000000.0
-plotData("data1.txt", secsPerSample)
+plotData("data1.txt", secsPerSample, numPins)
